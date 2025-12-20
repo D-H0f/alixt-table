@@ -7,7 +7,7 @@ repository = "https://github.com/D-H0f/alixt-table"
 description = "A table rendering library for CLIs"
 keywords = ["cli", "table", "tui", "formatting", "output"]
 categories = ["command-line-interface", "visualization"]
-readme = "REAME.md"
+readme = "README.md"
 
 [dependencies]
 colored = "3.0.0"
