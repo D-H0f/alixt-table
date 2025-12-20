@@ -11,6 +11,9 @@ alixt-table = "0.1.0"
 ## Usage
 TODO
 
+## Example Output From Alixt:
+![Project Screenshot](assets/screenshot_output.png)
+
 #### License
 
 <sup>
