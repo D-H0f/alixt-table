@@ -254,14 +254,9 @@ impl<const N: usize> Table<N> {
                 VERTICAL.blue()
             )?;
         }
-        writeln!(w)?;
-        Ok(())
-    }
-
-    fn _render_row<W: std::io::Write>(&self, w: &mut W, row: usize) -> Result<(), TableError> {
         write!(
             w,
-            "{}{}",
+            "\n{}{}",
             LEFT_T.blue(),
             HORIZONTAL.repeat(self.get_col_widths()[0]).blue()
         )?;
@@ -274,6 +269,11 @@ impl<const N: usize> Table<N> {
             )?;
         }
         writeln!(w, "{}", RIGHT_T.blue())?;
+
+        Ok(())
+    }
+
+    fn _render_row<W: std::io::Write>(&self, w: &mut W, row: usize) -> Result<(), TableError> {
         write!(w, "{}", VERTICAL.blue())?;
         let Some(row_data) = self.get_row(row) else {
             return Err(TableError::InputError(
