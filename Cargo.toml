@@ -1,6 +1,6 @@
 [package]
 name = "alixt-table"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/D-H0f/alixt-table"
@@ -12,3 +12,4 @@ readme = "README.md"
 [dependencies]
 colored = "3.0.0"
 thiserror = "2.0.17"
+unicode-width = "0.2.2"

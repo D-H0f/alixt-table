@@ -1,4 +1,5 @@
 use colored::{ColoredString, Colorize};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::TableError;
 
@@ -15,20 +16,17 @@ pub const LEFT_T: &str = "├";
 pub const RIGHT_T: &str = "┤";
 
 pub const SPACES: &str = "                                                                                                                               ";
-pub enum TableResult<const N: usize> {
+
+pub enum TablePartial<const N: usize> {
     Table(Table<N>),
-    TableError(TableError),
+    TableError(TableError)
 }
 
-impl<const N: usize> TableResult<N> {
+impl<const N: usize> TablePartial<N> {
     /// Example:
-    /// let Table::new().title("My table".red())
+    /// let Table::<3>::new().title("My table".red())
     pub fn title(self, title: ColoredString) -> Self {
-        let has_bad_char = title.chars().any(|c| c.is_ascii_control() || !c.is_ascii());
         match self {
-            Self::Table(_) if has_bad_char => Self::TableError(TableError::InputError(
-                "title contians non-ascii character or ascii control character".to_string(),
-            )),
             Self::Table(mut table) => {
                 table.title = title;
                 Self::Table(table)
@@ -37,41 +35,46 @@ impl<const N: usize> TableResult<N> {
         }
     }
 
-    pub fn headers(self, headers: [ColoredString; N]) -> Self {
+    pub fn headers(self, headers: [ColoredString; N]) -> TableResult<N> {
         match self {
             Self::Table(mut table) => {
                 for (i, header) in headers.into_iter().enumerate() {
-                    if header
-                        .chars()
-                        .any(|c| !c.is_ascii() || c.is_ascii_control())
-                    {
-                        return Self::TableError(TableError::InputError(format!(
-                            "header contains invalid header, '{}', bad character",
-                            header
-                        )));
-                    }
-                    if header.len() > table.col_widths[i] {
-                        table.col_widths[i] = header.len();
+                    if header.width() > table.col_widths[i] {
+                        table.col_widths[i] = header.width();
                     }
                     table.headers[i] = header;
                 }
-                Self::Table(table)
+                TableResult::Table(table)
             }
-            err => err,
+            Self::TableError(err) => TableResult::TableError(err),
         }
     }
+}
 
+pub enum TableResult<const N: usize> {
+    Table(Table<N>),
+    TableError(TableError),
+}
+
+
+impl<const N: usize> TableResult<N> {
+    /// Example:
+    /// let Table::<3>::new().headers(["my".blue(), "cool".blue(), "headers".blue()]).title("My table".red())
+    pub fn title(self, title: ColoredString) -> Self {
+        match self {
+            Self::Table(mut table) => {
+                table.title = title;
+                Self::Table(table)
+            }
+            Self::TableError(err) => Self::TableError(err),
+        }
+    }
     pub fn row(self, row: [ColoredString; N]) -> Self {
         match self {
             Self::Table(mut table) => {
                 for (i, cell) in row.into_iter().enumerate() {
-                    if cell.chars().any(|c| !c.is_ascii() || c.is_ascii_control()) {
-                        return Self::TableError(TableError::InputError(format!(
-                            "row contains invalid cell, '{cell}', bad character"
-                        )));
-                    }
-                    if cell.len() > table.col_widths[i] {
-                        table.col_widths[i] = cell.len();
+                    if cell.width() > table.col_widths[i] {
+                        table.col_widths[i] = cell.width();
                     }
                     table.cells.push(cell);
                 }
@@ -101,8 +104,8 @@ pub struct Table<const N: usize> {
 impl<const N: usize> Table<N> {
     /// Table is created with a fixed number of columns
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> TableResult<N> {
-        TableResult::Table(Self {
+    pub fn new() -> TablePartial<N> {
+        TablePartial::Table(Self {
             title: "".white(),
             rows: 0,
             col_widths: [0; N],
@@ -111,19 +114,9 @@ impl<const N: usize> Table<N> {
         })
     }
     pub fn headers(&mut self, headers: [ColoredString; N]) -> Result<(), TableError> {
-        for header in headers.iter() {
-            if header
-                .chars()
-                .any(|c| !c.is_ascii() || c.is_ascii_control())
-            {
-                return Err(TableError::InputError(format!(
-                    "Invalid header '{header}' contains non-ascii or control char"
-                )));
-            }
-        }
         for (i, header) in headers.into_iter().enumerate() {
-            if header.len() > self.col_widths[i] {
-                self.col_widths[i] = header.len();
+            if header.width() > self.col_widths[i] {
+                self.col_widths[i] = header.width();
             }
             self.headers[i] = header;
         }
@@ -131,16 +124,9 @@ impl<const N: usize> Table<N> {
     }
 
     pub fn push_row(&mut self, row: [ColoredString; N]) -> Result<(), TableError> {
-        for cell in row.iter() {
-            if cell.chars().any(|c| !c.is_ascii() || c.is_ascii_control()) {
-                return Err(TableError::InputError(format!(
-                    "Invalid row cell, '{cell}', contains non-ascii or control char"
-                )));
-            }
-        }
         for (i, cell) in row.into_iter().enumerate() {
-            if cell.len() > self.col_widths[i] {
-                self.col_widths[i] = cell.len();
+            if cell.width() > self.col_widths[i] {
+                self.col_widths[i] = cell.width();
             }
             self.cells.push(cell);
         }
@@ -187,6 +173,21 @@ impl<const N: usize> Table<N> {
         self.get_col_widths().iter().sum()
     }
 
+    fn safe_truncate(&self, input: &str, max_width: usize) -> String {
+        let mut width = 0;
+        let mut result = String::new();
+
+        for c in input.chars() {
+            let w = c.width().unwrap_or(0);
+            if width + w > max_width {
+                break;
+            }
+            width += w;
+            result.push(c);
+        }
+        result
+    }
+
     fn _render_top<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
         let table_width = self.content_width() + self.get_column_count() - 1;
 
@@ -208,19 +209,19 @@ impl<const N: usize> Table<N> {
             write!(w, "{}", VERTICAL.blue())?;
             // if title is longer than table width, truncate to be 5 chars shorter
             // than the table, to account for the border chars and the '...'
-            if title.len() > table_width - 2 {
+            if title.width() > table_width - 2 {
                 writeln!(
                     w,
                     "{}...{}",
-                    self.title[..table_width - 3]
-                        .to_string()
+                    /*self.title[..table_width - 3]*/
+                    self.safe_truncate(title, table_width - 3)
                         .color(self.title.fgcolor.unwrap_or(colored::Color::White)),
                     VERTICAL.blue(),
                 )?;
             } else {
-                let pad_l = self.padding((table_width - title.len()) / 2);
+                let pad_l = self.padding((table_width - title.width()) / 2);
                 let pad_r =
-                    self.padding((table_width - title.len()) - (table_width - title.len()) / 2);
+                    self.padding((table_width - title.width()) - (table_width - title.width()) / 2);
 
                 writeln!(w, "{}{}{}{}", pad_l, self.title, pad_r, VERTICAL.blue(),)?;
             }
@@ -250,7 +251,7 @@ impl<const N: usize> Table<N> {
                 w,
                 "{}{}{}",
                 header,
-                self.padding(self.get_col_widths()[i] - header.len()),
+                self.padding(self.get_col_widths()[i] - header.width()),
                 VERTICAL.blue()
             )?;
         }
@@ -285,7 +286,7 @@ impl<const N: usize> Table<N> {
                 w,
                 "{}{}{}",
                 cell,
-                self.padding(self.get_col_widths()[i] - cell.len()),
+                self.padding(self.get_col_widths()[i] - cell.width()),
                 VERTICAL.blue()
             )?;
         }
